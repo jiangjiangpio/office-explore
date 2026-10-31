@@ -1,0 +1,16 @@
+<Application x:Class="OfficeTouchBar.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" ShutdownMode="OnExplicitShutdown">
+  <Application.Resources>
+    <Style TargetType="Button">
+      <Setter Property="Background" Value="#D92B2B2B"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderBrush" Value="#80FFFFFF"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontSize" Value="22"/>
+      <Setter Property="Margin" Value="4"/>
+      <Setter Property="MinHeight" Value="58"/>
+      <Setter Property="Padding" Value="8"/>
+    </Style>
+  </Application.Resources>
+</Application>

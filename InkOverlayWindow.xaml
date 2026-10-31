@@ -1,0 +1,21 @@
+<Window x:Class="OfficeTouchBar.InkOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:infra="clr-namespace:OfficeTouchBar.Infrastructure"
+        AllowsTransparency="True" Background="Transparent" WindowStyle="None"
+        ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False"
+        Topmost="True" Focusable="True">
+  <Grid Background="#01000000">
+    <infra:ObservedInkCanvas x:Name="InkSurface" Background="#01000000"
+               UseCustomCursor="True" Cursor="Pen"/>
+    <Canvas IsHitTestVisible="False">
+      <Border x:Name="EraserIndicator" Width="12" Height="12" Visibility="Collapsed"
+              Background="#BFFFFFFF" BorderBrush="#CC555B61" BorderThickness="1" CornerRadius="2">
+        <Border.RenderTransform><TranslateTransform x:Name="EraserTranslation"/></Border.RenderTransform>
+        <Path Width="8" Height="8" Stretch="Uniform" Stroke="#FF353A40" StrokeThickness="1"
+              StrokeLineJoin="Round" Fill="Transparent"
+              Data="M2,12 L12,2 L23,11 L13,21 L9,21 Z M7,7 L18,17 M13,21 L25,21"/>
+      </Border>
+    </Canvas>
+  </Grid>
+</Window>

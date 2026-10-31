@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <AssemblyName>OfficeTouchBar</AssemblyName>
+    <Version>0.3.18</Version>
+    <RootNamespace>OfficeTouchBar</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Inno Setup 6\**\*.cs" />
+    <Compile Remove="Tests\**\*.cs" />
+    <Compile Remove="artifacts\**\*.cs" />
+    <ApplicationDefinition Remove="artifacts\**\*.xaml" />
+    <Page Remove="artifacts\**\*.xaml" />
+    <InternalsVisibleTo Include="OfficeTouchBar.Tests" />
+    <None Remove="Inno Setup 6\**" />
+    <None Remove="artifacts\**" />
+    <EmbeddedResource Remove="artifacts\**" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,31 @@
+# This repository contains only application source and build inputs.
+# Keep tests, local documents, tools, caches and generated files on this machine.
+/*
+!/.gitignore
+!/LICENSE
+!/README.md
+!/OfficeTouchBar.csproj
+!/NuGet.Config
+!/app.manifest
+!/build.ps1
+!/App.xaml
+!/App.xaml.cs
+!/MainController.cs
+!/PowerPointBridge.cs
+!/OverlayWindow.xaml
+!/OverlayWindow.xaml.cs
+!/InkOverlayWindow.xaml
+!/InkOverlayWindow.xaml.cs
+!/InkRetentionWindow.cs
+!/SettingsWindow.xaml
+!/SettingsWindow.xaml.cs
+!/Models/
+/Models/*
+!/Models/*.cs
+!/Infrastructure/
+/Infrastructure/*
+!/Infrastructure/*.cs
+!/Setup/
+/Setup/*
+!/Setup/OfficeTouchBar.iss
+!/Setup/LegacyPayloadFiles.txt

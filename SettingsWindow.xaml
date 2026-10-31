@@ -1,0 +1,108 @@
+<Window x:Class="OfficeTouchBar.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OfficeTouchBar 设置"
+        Width="520" Height="720" Background="White"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize">
+  <Window.Resources>
+    <Style TargetType="TextBlock">
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style TargetType="CheckBox">
+      <Setter Property="ContentTemplate">
+        <Setter.Value><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="Button">
+      <Setter Property="Height" Value="36"/><Setter Property="MinHeight" Value="36"/>
+      <Setter Property="Margin" Value="4"/><Setter Property="Padding" Value="8,2"/>
+      <Setter Property="FontSize" Value="14"/><Setter Property="Background" Value="#FFF2F5F3"/>
+      <Setter Property="Foreground" Value="#FF202124"/><Setter Property="BorderBrush" Value="#FFB7C0BB"/>
+    </Style>
+  </Window.Resources>
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Top">
+      <TextBlock Text="OfficeTouchBar" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,8"/>
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button x:Name="CancelButton" Content="取消" MinWidth="86" Click="CancelButton_OnClick"/>
+      <Button x:Name="SaveButton" Content="保存" MinWidth="86" Click="SaveButton_OnClick"/>
+    </StackPanel>
+    <TabControl x:Name="SettingsTabs" BorderThickness="0" Padding="0,12,0,0">
+    <TabItem Header="常规">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="4,8,12,8">
+      <TextBlock Text="界面语言" Margin="0,0,0,4"/>
+      <ComboBox x:Name="LanguageBox" Margin="0,0,0,12"/>
+
+      <CheckBox x:Name="StartWithWindowsBox" Content="开机自启动" Margin="0,6"/>
+      <CheckBox x:Name="DuplicateDisplayBox" Content="登录自启动时切换为复制显示" Margin="0,6"/>
+      <WrapPanel>
+        <Button x:Name="SwitchDisplayButton" Content="立即切换为复制模式" Click="SwitchDisplay_OnClick"/>
+        <Button x:Name="CleanDisplayButton" Content="清理显示切换进程" Click="CleanDisplay_OnClick"/>
+      </WrapPanel>
+      <TextBlock x:Name="DisplayStatus" Foreground="#FF666666" Margin="0,4,0,8"
+                 Text="仅清理本应用启动的显示切换进程；不会关闭 PowerPoint。"/>
+      <CheckBox x:Name="AutoRunBox" Content="启动后自动启用侧栏检测" Margin="0,6"/>
+      <CheckBox x:Name="ShowWhenActiveBox" Content="PowerPoint 激活时显示侧栏" Margin="0,6"/>
+      <CheckBox x:Name="OnlyDuringSlideShowBox" Content="仅在放映模式显示" Margin="0,6"/>
+    </StackPanel>
+    </ScrollViewer>
+    </TabItem>
+    <TabItem Header="工具">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="4,8,12,8">
+      <TextBlock Text="墨迹模式" Margin="0,18,0,4"/>
+      <ComboBox x:Name="InkEngineBox" SelectedIndex="0" HorizontalAlignment="Stretch">
+        <ComboBoxItem Content="Office 原生笔"/>
+        <ComboBoxItem Content="内置笔（自动逐页保存）"/>
+      </ComboBox>
+      <CheckBox x:Name="ResetMouseBox" Content="打开或切换文稿时恢复鼠标" Margin="0,16,0,6"/>
+      <CheckBox x:Name="AutoClosePaletteBox" Content="自动收起墨迹工具面板" Margin="0,6"/>
+      <CheckBox x:Name="DeletePreviousDaysInkBox" Content="自动删除前一天及更早的内置笔迹" Margin="0,6"/>
+      <TextBlock Text="按本地日期清理；程序未运行时，下次启动补清理。不影响 PPT 内的 Office 原生墨迹。" Foreground="#FF666666" Margin="0,0,0,8"/>
+      <CheckBox x:Name="ConfineCursorBox" Content="内置书写时将鼠标限制在放映区域" Margin="0,12,0,6"/>
+      <CheckBox x:Name="SuppressEdgeGesturesBox" Content="内置全屏书写时防止触屏边缘误触" Margin="0,6"/>
+      <TextBlock Text="切回鼠标或离开放映后恢复；边缘手势保护需在触控设备上验证。" Foreground="#FF666666" Margin="0,0,0,12"/>
+      <CheckBox x:Name="ShowPageNumberBox" Content="显示页码" Margin="0,6"/>
+      <CheckBox x:Name="ShowBrowserBox" Content="显示退出幻灯片按钮" Margin="0,6"/>
+    </StackPanel>
+    </ScrollViewer>
+    </TabItem>
+    <TabItem Header="外观与位置">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="4,8,12,8">
+      <TextBlock Text="侧栏整体透明度" Margin="0,4,0,4"/>
+      <Slider x:Name="OpacitySlider" Minimum="0" Maximum="0.9" Value="0.8" TickFrequency="0.05" IsSnapToTickEnabled="True"/>
+      <TextBlock x:Name="OpacityValue" Text="80%" HorizontalAlignment="Right"/>
+      <CheckBox x:Name="InteractionOpacityBox" Content="悬停或触控时提高可见度" Margin="0,6"/>
+      <TextBlock Text="交互时透明度" Margin="0,10,0,4"/>
+      <Slider x:Name="InteractionOpacitySlider" Minimum="0" Maximum="0.9" Value="0.15" TickFrequency="0.05"
+              IsSnapToTickEnabled="True" IsEnabled="{Binding IsChecked, ElementName=InteractionOpacityBox}"/>
+      <TextBlock x:Name="InteractionOpacityValue" Text="15%" HorizontalAlignment="Right"/>
+      <TextBlock Text="按钮大小" Margin="0,14,0,4"/>
+      <Slider x:Name="ButtonScaleSlider" Minimum="0.4" Maximum="2" Value="1" TickFrequency="0.05" IsSnapToTickEnabled="True"/>
+      <TextBlock x:Name="ButtonScaleValue" Text="100%" HorizontalAlignment="Right"/>
+      <CheckBox x:Name="FollowWindowBox" Content="跟随 PowerPoint 窗口" Margin="0,10,0,6"/>
+      <CheckBox x:Name="SnapToEdgeBox" Content="靠近屏幕边缘时自动吸附" Margin="0,6"/>
+      <CheckBox x:Name="LockPositionBox" Content="锁定侧栏位置" Margin="0,6"/>
+      <TextBlock Text="停靠位置" Margin="0,18,0,4"/>
+      <ComboBox x:Name="DockSideBox" SelectedIndex="1" Width="140" HorizontalAlignment="Left">
+        <ComboBoxItem Content="左侧"/>
+        <ComboBoxItem Content="右侧"/>
+      </ComboBox>
+      <TextBlock Text="边缘距离" Margin="0,14,0,4"/>
+      <Slider x:Name="EdgeOffsetSlider" Minimum="0" Maximum="200" TickFrequency="1" IsSnapToTickEnabled="True"
+              IsEnabled="{Binding IsChecked, ElementName=FollowWindowBox}"/>
+      <TextBlock x:Name="EdgeOffsetValue" HorizontalAlignment="Right"/>
+      <TextBlock Text="垂直位置" Margin="0,14,0,4"/>
+      <Slider x:Name="RelativeTopSlider" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"
+              IsEnabled="{Binding IsChecked, ElementName=FollowWindowBox}"/>
+      <TextBlock x:Name="RelativeTopValue" HorizontalAlignment="Right"/>
+    </StackPanel>
+    </ScrollViewer>
+    </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>
