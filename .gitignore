@@ -29,3 +29,22 @@
 /Setup/*
 !/Setup/OfficeTouchBar.iss
 !/Setup/LegacyPayloadFiles.txt
+!/new/
+/new/*
+!/new/CMakeLists.txt
+!/new/include/
+!/new/src/
+/new/include/**
+!/new/include/**/
+!/new/include/**/*.hpp
+/new/src/**
+!/new/src/**/
+!/new/src/**/*.cpp
+!/new/third_party/
+/new/third_party/*
+!/new/third_party/nlohmann/
+/new/third_party/nlohmann/*
+!/new/third_party/nlohmann/json.hpp
+!/new/third_party/nlohmann/LICENSE.MIT
+# The native rewrite is cancelled; keep its source and artifacts local.
+/new/

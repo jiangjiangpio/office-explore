@@ -50,6 +50,8 @@ public partial class InkOverlayWindow : Window
     private bool _pageInkVisible = true;
     private Rect _lastPhysicalBounds = Rect.Empty;
     private nint _keyboardHwnd;
+    private (PointerTool Tool, System.Windows.Media.Color Color, double Size)? _pendingTool;
+    private readonly DispatcherTimer _toolTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
 
     public event Action? InkChanged;
     internal int StrokeCount => InkSurface.Strokes.Count;
@@ -86,6 +88,7 @@ public partial class InkOverlayWindow : Window
     public InkOverlayWindow()
     {
         InitializeComponent();
+        _toolTimer.Tick += (_, _) => ApplyPendingTool();
         InkSurface.AddObserver(_rawContacts);
         InkSurface.StrokeCollected += InkSurface_OnChanged;
         InkSurface.StrokeErased += InkSurface_OnChanged;
@@ -138,6 +141,7 @@ public partial class InkOverlayWindow : Window
         };
         Closed += (_, _) =>
         {
+            _toolTimer.Stop();
             ComponentDispatcher.ThreadFilterMessage -= FilterKeyboardMessage;
             _keyboardHwnd = 0;
             ResetContacts();
@@ -186,7 +190,15 @@ public partial class InkOverlayWindow : Window
     public void ConfigureTool(PointerTool tool, System.Windows.Media.Color color,
         double penSize = 3.2, double eraserSize = 30)
     {
-        penSize = Math.Clamp(penSize, 1, 20);
+        penSize = double.IsFinite(penSize) ? Math.Clamp(penSize, 1, 20) : 3.2;
+        if (HasActiveContact)
+        {
+            _pendingTool = (tool, color, penSize);
+            _toolTimer.Start();
+            return;
+        }
+        _pendingTool = null;
+        _toolTimer.Stop();
         if (_configuredTool == tool && _configuredColor == color
             && _configuredPenSize == penSize) return;
         var modeChanged = _configuredTool != tool;
@@ -231,6 +243,13 @@ public partial class InkOverlayWindow : Window
         _configuredColor = color;
         _configuredPenSize = penSize;
         UpdateRawInputObserver();
+    }
+
+    internal void ApplyPendingTool()
+    {
+        if (HasActiveContact) return;
+        if (_pendingTool is { } pending) ConfigureTool(pending.Tool, pending.Color, pending.Size);
+        else _toolTimer.Stop();
     }
 
     public void Place(nint targetHandle, Rect physicalBounds, bool show)
@@ -405,6 +424,7 @@ public partial class InkOverlayWindow : Window
 
     internal void HideForReason(string reason)
     {
+        CancelInput(reason);
         TraceInput($"hide-window reason={reason}");
         Hide();
     }

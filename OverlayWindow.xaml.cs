@@ -31,6 +31,9 @@ public partial class OverlayWindow : Window
     private double _restOpacity = 0.2;
     private double _interactionOpacity = 0.85;
     private bool _settingInkSizes;
+    private TouchDevice? _sizeTouch;
+    private readonly System.Windows.Threading.DispatcherTimer _sizeCommitTimer = new()
+        { Interval = TimeSpan.FromMilliseconds(80) };
     private bool _deferredPaletteLayout;
     private Size _lastFitArea = Size.Empty;
     private System.Windows.Media.Color _selectedColor =
@@ -57,6 +60,33 @@ public partial class OverlayWindow : Window
     public OverlayWindow()
     {
         InitializeComponent();
+        PenSizeSlider.PreviewTouchDown += (_, e) =>
+        {
+            e.Handled = true;
+            if (_sizeTouch is not null) return;
+            _sizeTouch = e.TouchDevice;
+            if (!e.TouchDevice.Capture(PenSizeSlider)) { _sizeTouch = null; return; }
+            SetTouchSize(e);
+        };
+        PenSizeSlider.PreviewTouchMove += (_, e) =>
+        { e.Handled = true; if (_sizeTouch == e.TouchDevice) SetTouchSize(e); };
+        PenSizeSlider.PreviewTouchUp += (_, e) =>
+        {
+            e.Handled = true;
+            if (_sizeTouch != e.TouchDevice) return;
+            SetTouchSize(e);
+            _sizeTouch = null;
+            e.TouchDevice.Capture(null);
+        };
+        PenSizeSlider.LostTouchCapture += (_, e) =>
+        { if (_sizeTouch == e.TouchDevice) _sizeTouch = null; };
+        _sizeCommitTimer.Tick += (_, _) =>
+        {
+            if (_sizeTouch is not null || PenSizeSlider.IsMouseCaptureWithin || PenSizeSlider.IsStylusCaptureWithin) return;
+            _sizeCommitTimer.Stop();
+            InkSizesChanged?.Invoke(PenSizeSlider.Value, InkOverlayWindow.EraserContactSize);
+        };
+        Closed += (_, _) => _sizeCommitTimer.Stop();
         MouseEnter += (_, _) => UpdateInteractionOpacity(true);
         MouseLeave += (_, _) => UpdateInteractionOpacity(false);
         AddHandler(TouchDownEvent, new EventHandler<TouchEventArgs>((_, _) => UpdateInteractionOpacity(true)), true);
@@ -72,6 +102,20 @@ public partial class OverlayWindow : Window
 
     private nint WindowHook(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     {
+        // WPF resizes before the controller places the expanded palette. Keep
+        // the main bar anchored throughout that intermediate native resize.
+        if (message == 0x0046 && lParam != 0)
+        {
+            var p = Marshal.PtrToStructure<WindowPosition>(lParam);
+            if ((p.Flags & 3) == 2 && IsVisible)
+            {
+                var old = NativeMethods.Bounds(hwnd);
+                p.X = (int)old.Left + (RootBorder.HorizontalAlignment == HorizontalAlignment.Right ? (int)old.Width - p.Width : 0);
+                p.Y = (int)old.Top + ((int)old.Height - p.Height) / 2;
+                p.Flags &= ~2u;
+                Marshal.StructureToPtr(p, lParam, false);
+            }
+        }
         if (message == 0x02E0) _lastFitArea = Size.Empty; // WM_DPICHANGED
         if (message == 0x0047 && lParam != 0) // WM_WINDOWPOSCHANGED
         {
@@ -182,7 +226,15 @@ public partial class OverlayWindow : Window
     {
         if (PenSizeValue is null) return;
         UpdateInkSizeLabels();
-        if (!_settingInkSizes) InkSizesChanged?.Invoke(PenSizeSlider.Value, InkOverlayWindow.EraserContactSize);
+        if (!_settingInkSizes) { _sizeCommitTimer.Stop(); _sizeCommitTimer.Start(); }
+    }
+
+    private void SetTouchSize(TouchEventArgs e)
+    {
+        var track = PenSizeSlider.Template.FindName("PART_Track", PenSizeSlider) as System.Windows.Controls.Primitives.Track;
+        if (track is null || track.ActualWidth <= 20) return;
+        var fraction = Math.Clamp((e.GetTouchPoint(track).Position.X - 10) / (track.ActualWidth - 20), 0, 1);
+        PenSizeSlider.Value = PenSizeSlider.Minimum + fraction * (PenSizeSlider.Maximum - PenSizeSlider.Minimum);
     }
 
     private void UpdateInkSizeLabels()
@@ -220,8 +272,8 @@ public partial class OverlayWindow : Window
     public void ClosePalette(bool deferWindowLayout = false)
     {
         if (!PaletteOpen) return;
+        if (deferWindowLayout) { PenPalette.Visibility = Visibility.Hidden; _deferredPaletteLayout = true; return; }
         PenPalette.Visibility = Visibility.Collapsed;
-        if (deferWindowLayout) { _deferredPaletteLayout = true; return; }
         UpdateDimensions();
         LayoutChanged?.Invoke();
     }
@@ -230,6 +282,7 @@ public partial class OverlayWindow : Window
     {
         if (!_deferredPaletteLayout) return;
         _deferredPaletteLayout = false;
+        PenPalette.Visibility = Visibility.Collapsed;
         UpdateDimensions();
         LayoutChanged?.Invoke();
     }
@@ -240,6 +293,7 @@ public partial class OverlayWindow : Window
     private void ClearInkButton_OnClick(object sender, RoutedEventArgs e) => ClearInkClicked?.Invoke();
     private void PenButton_OnClick(object sender, RoutedEventArgs e)
     {
+        _deferredPaletteLayout = false;
         PenPalette.Visibility = PaletteOpen ? Visibility.Collapsed : Visibility.Visible;
         UpdateDimensions();
         LayoutChanged?.Invoke();

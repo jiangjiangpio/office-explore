@@ -9,11 +9,14 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <AssemblyName>OfficeTouchBar</AssemblyName>
-    <Version>0.3.18</Version>
+    <Version>0.3.19</Version>
     <RootNamespace>OfficeTouchBar</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="new\**\*.cs" />
+    <Page Remove="new\**\*.xaml" />
+    <None Remove="new\**" />
     <Compile Remove="Inno Setup 6\**\*.cs" />
     <Compile Remove="Tests\**\*.cs" />
     <Compile Remove="artifacts\**\*.cs" />

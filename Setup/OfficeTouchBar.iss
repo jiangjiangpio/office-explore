@@ -1,5 +1,5 @@
 #define MyAppName "OfficeTouchBar"
-#define MyAppVersion "0.3.18"
+#define MyAppVersion "0.3.19"
 #define MyAppPublisher "OfficeTouchBar"
 #define MyAppExeName "OfficeTouchBar.exe"
 

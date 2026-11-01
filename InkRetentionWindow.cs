@@ -97,6 +97,12 @@ internal sealed class InkRetentionWindow : Window
         KeepButton = FlatButton(Localization.Get("保留", language), accent, Brushes.White, accent);
         KeepButton.IsDefault = true;
         KeepButton.IsCancel = true;
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != System.Windows.Input.Key.Escape) return;
+            e.Handled = true;
+            Close();
+        };
         KeepButton.Click += (_, _) => Close();
         DiscardButton = FlatButton(Localization.Get("放弃", language), Brushes.White, Brushes.Black, Brushes.DarkGray);
         DiscardButton.Margin = new Thickness(8, 0, 0, 0);

@@ -40,9 +40,11 @@ public sealed class MainController : IDisposable
     private readonly Dictionary<nint, InkSession> _inkSessions = [];
     private readonly PresentationToolPolicy _presentationTools = new();
     private readonly ExitTransitionPolicy _exitTransition = new();
+    private readonly OfficeExitOperation _officeExit = new();
     private readonly Forms.NotifyIcon _trayIcon;
     private readonly Forms.ToolStripMenuItem _runningItem;
     private SettingsWindow? _settingsWindow;
+    private InkRetentionWindow? _retentionWindow;
     private bool _disposed;
     private bool _running;
     private int _focusGeneration;
@@ -167,7 +169,7 @@ public sealed class MainController : IDisposable
         {
             Icon = System.Drawing.SystemIcons.Application,
             Visible = true,
-            Text = "OfficeTouchBar 0.3.18"
+            Text = "OfficeTouchBar 0.3.19"
         };
         _trayIcon.DoubleClick += (_, _) => ShowSettings();
         var menu = new Forms.ContextMenuStrip();
@@ -199,7 +201,7 @@ public sealed class MainController : IDisposable
         _bridge.OverlayHandle = overlayHandle;
         _bridge.InkOverlayHandle = inkHandle;
         _inkOverlay.ToolbarHandle = overlayHandle;
-        DiagnosticLog.Ink($"startup version=0.3.18.0 settings={DiagnosticBundle.SettingsSummary(_settings)}");
+        DiagnosticLog.Ink($"startup version=0.3.19.0 settings={DiagnosticBundle.SettingsSummary(_settings)}");
         StartSnapshotPoller();
         _foregroundWatcher = new NativeInputProtection.ForegroundWatcher(UpdateInputProtection);
         _protectionTimer.Start();
@@ -252,6 +254,7 @@ public sealed class MainController : IDisposable
 
     private void PollOffice()
     {
+        if (_settingsWindow is { IsVisible: true }) return;
         if (_disposed || !_running || _showingInkPrompt || _exitInProgress) return;
         if (_inkOverlay.IsVisible && _inkOverlay.IsWriting) return;
         var foreground = NativeMethods.GetForegroundWindow();
@@ -288,6 +291,7 @@ public sealed class MainController : IDisposable
 
     private void ApplySnapshot(PowerPointSnapshot snapshot)
     {
+        if (_settingsWindow is { IsVisible: true }) return;
         if (_disposed || !_running || _showingInkPrompt || _exitInProgress) return;
         if (_inkOverlay.IsVisible && _inkOverlay.IsWriting) return;
         if (snapshot.ObservedForegroundHandle != 0
@@ -457,6 +461,7 @@ public sealed class MainController : IDisposable
 
     private void ShowSettings()
     {
+        if (_showingInkPrompt || _exitInProgress) { _retentionWindow?.Activate(); return; }
         _inkOverlay.TraceInput("show-settings");
         _deferredKeys.Clear();
         _keyBufferOverflow = false;
@@ -464,7 +469,7 @@ public sealed class MainController : IDisposable
         if (_settingsWindow is { IsVisible: true }) { _settingsWindow.Activate(); return; }
         _focusGeneration++;
         _inkOverlay.CancelInput("settings opened");
-        SaveBuiltInInk(true);
+        SaveBuiltInInk(false);
         _inkOverlay.HideForReason("settings opened");
         ReleasePromotedSlideShow();
         _overlay.Hide();
@@ -778,18 +783,33 @@ public sealed class MainController : IDisposable
         _promotedSlideShow = 0;
     }
 
-    private void ExitSlideShow()
+    private async void ExitSlideShow()
     {
         if (_exitInProgress || _showingInkPrompt) return;
         if (_exitTransition.IsWaiting(NativeMethods.GetForegroundWindow(), DateTime.UtcNow,
             NativeMethods.IsSlideShowWindow)) return;
         _exitInProgress = true;
         _focusGeneration++; // Cancel delayed focus restoration from older tool clicks.
-        try { ExitSlideShowCore(); }
-        finally { _exitInProgress = false; }
+        var inkEnabled = _inkOverlay.IsEnabled;
+        var toolbarEnabled = _overlay.IsEnabled;
+        _inkOverlay.CancelInput("exit input handoff");
+        _inkOverlay.IsEnabled = false;
+        _overlay.IsEnabled = false;
+        try { await ExitSlideShowCore(); }
+        catch (Exception ex) { Report("退出幻灯片放映", ex.Message); }
+        finally
+        {
+            _exitInProgress = false;
+            if (!_disposed)
+            {
+                _inkOverlay.IsEnabled = inkEnabled;
+                _overlay.IsEnabled = toolbarEnabled;
+                PollOffice();
+            }
+        }
     }
 
-    private void ExitSlideShowCore()
+    private async Task ExitSlideShowCore()
     {
         if (_inkEngine == InkEngine.BuiltIn) _inkOverlay.CancelInput("explicit slideshow exit");
         _inkOverlay.EndEraser();
@@ -797,53 +817,60 @@ public sealed class MainController : IDisposable
         string? confirmedPresentation = null;
         InkPageKey? discardAfterExit = null;
         nint promptHandle = 0;
-        var result = _exitTransition.TryExit(
-            () => _inkEngine != InkEngine.BuiltIn
-                || ConfirmRetentionBeforeExit(out confirmedPresentation, out discardAfterExit,
-                    out promptHandle),
-            () =>
-            {
-                _inkOverlay.HideForReason("confirmed slideshow exit");
-                ReleasePromotedSlideShow();
-                _overlay.ClosePalette();
-                _overlay.Hide();
-            },
-            () => _inkEngine == InkEngine.BuiltIn
-                ? _bridge.ExitBuiltInSlideShowAfterConfirmation(target)
-                : _bridge.ExitSlideShowAfterConfirmation(target, promptHandle),
-            () =>
-            {
-            if (discardAfterExit is not null)
-                _inkStore.DiscardPresentation(discardAfterExit);
-            if (confirmedPresentation is not null)
-                _retentionConfirmedPresentations.Add(confirmedPresentation);
-            }, target, DateTime.UtcNow, allowResume: _inkEngine != InkEngine.BuiltIn);
-        DiagnosticLog.Write($"command=退出幻灯片放映 target={target} result={result}");
-        if (result == ExitResult.Sent)
-            // Release a completed exit immediately, before a subsequent show
-            // has a chance to reuse the same native handle.
-            _exitTransition.IsWaiting(NativeMethods.GetForegroundWindow(), DateTime.UtcNow,
-                NativeMethods.IsSlideShowWindow);
-        if (result == ExitResult.Failed)
+        if (_inkEngine == InkEngine.BuiltIn)
         {
-            Report("退出幻灯片放映", "当前 PowerPoint 状态不支持此操作，或放映窗口未能获得焦点。");
-            PollOffice();
+            var confirmation = await ConfirmRetentionBeforeExit();
+            if (!confirmation.Success || _disposed) return;
+            confirmedPresentation = confirmation.Presentation;
+            discardAfterExit = confirmation.Discard;
+            promptHandle = confirmation.Handle;
         }
+        var snapshot = _bridge.Snapshot;
+        _exitTransition.Begin(target, DateTime.UtcNow, allowResume: _inkEngine != InkEngine.BuiltIn);
+        try
+        {
+            _inkOverlay.HideForReason("confirmed slideshow exit");
+            ReleasePromotedSlideShow();
+            _overlay.ClosePalette();
+            _overlay.Hide();
+            var sent = _inkEngine == InkEngine.BuiltIn
+                ? await _officeExit.RunAsync(() =>
+                {
+                    using var bridge = new PowerPointBridge();
+                    bridge.UseSnapshot(snapshot);
+                    return bridge.ExitBuiltInSlideShowAfterConfirmation(target);
+                }, TimeSpan.FromSeconds(5))
+                : _bridge.ExitSlideShowAfterConfirmation(target, promptHandle);
+            if (_disposed) return;
+            var result = sent ? ExitResult.Sent : ExitResult.Failed;
+            if (sent)
+            {
+                if (discardAfterExit is not null)
+                    _inkStore.DiscardPresentation(discardAfterExit);
+                if (confirmedPresentation is not null)
+                    _retentionConfirmedPresentations.Add(confirmedPresentation);
+            }
+            else _exitTransition.Cancel();
+            DiagnosticLog.Write($"command=退出幻灯片放映 target={target} result={result}");
+            if (result == ExitResult.Sent)
+                // Release before a later show can reuse the native handle.
+                _exitTransition.IsWaiting(NativeMethods.GetForegroundWindow(), DateTime.UtcNow,
+                    NativeMethods.IsSlideShowWindow);
+            if (result == ExitResult.Failed)
+                Report("退出幻灯片放映", "当前 PowerPoint 状态不支持此操作，或放映窗口未能获得焦点。");
+        }
+        catch { _exitTransition.Cancel(); throw; }
     }
 
-    private bool ConfirmRetentionBeforeExit(out string? confirmedPresentation,
-        out InkPageKey? discardAfterExit, out nint promptHandle)
+    private async Task<(bool Success, string? Presentation, InkPageKey? Discard, nint Handle)> ConfirmRetentionBeforeExit()
     {
-        confirmedPresentation = null;
-        discardAfterExit = null;
-        promptHandle = 0;
-        if (!SaveBuiltInInk(true)) return false;
+        if (!await SaveBuiltInInkAsync()) return (false, null, null, 0);
 
         var snapshot = _bridge.Snapshot;
-        if (!snapshot.IsSlideShow || snapshot.WindowHandle == 0) return true;
+        if (!snapshot.IsSlideShow || snapshot.WindowHandle == 0) return (true, null, null, 0);
         if (!_inkSessions.TryGetValue(snapshot.WindowHandle, out var session))
         {
-            if (_activeInkPage is null) return true;
+            if (_activeInkPage is null) return (true, null, null, 0);
             session = new InkSession(_activeInkPage, snapshot.WindowBounds);
         }
 
@@ -851,24 +878,18 @@ public sealed class MainController : IDisposable
             && NativeMethods.IsSlideShowWindow(other.Key)
             && string.Equals(other.Value.Page.PresentationIdentity,
                 session.Page.PresentationIdentity, StringComparison.OrdinalIgnoreCase));
-        if (anotherSession || !_inkStore.HasPresentationInk(session.Page)) return true;
-        if (!ShowRetentionPrompt(session, snapshot.WindowHandle, out var keepInk, out promptHandle))
-            return false;
-
-        confirmedPresentation = session.Page.PresentationIdentity;
-        if (!keepInk) discardAfterExit = session.Page;
-        return true;
+        if (anotherSession || !_inkStore.HasPresentationInk(session.Page)) return (true, null, null, 0);
+        var choice = await ShowRetentionPrompt(session, snapshot.WindowHandle);
+        return (choice.Success, session.Page.PresentationIdentity, choice.Keep ? null : session.Page, choice.Handle);
     }
 
-    private bool ShowRetentionPrompt(InkSession session, nint owner,
-        out bool keepInk, out nint promptHandle)
+    private async Task<(bool Success, bool Keep, nint Handle)> ShowRetentionPrompt(InkSession session, nint owner)
     {
-        keepInk = true;
-        promptHandle = 0;
         _showingInkPrompt = true;
         _focusGeneration++;
         _inputProtection.Release();
-        // Keep the slide and ink visible behind the modal confirmation.
+        _inkOverlay.CancelInput("retention prompt opened");
+        // Keep the slide and ink visible behind the asynchronous confirmation.
         // Removing the promoted stack here exposes the editor before a choice.
         var inkEnabled = _inkOverlay.IsEnabled;
         var overlayEnabled = _overlay.IsEnabled;
@@ -878,25 +899,50 @@ public sealed class MainController : IDisposable
         {
             var prompt = new InkRetentionWindow(session.Page.PresentationName,
                 _settings.Language, session.Bounds, _settings.DeletePreviousDaysInk);
+            _retentionWindow = prompt;
             var helper = new System.Windows.Interop.WindowInteropHelper(prompt);
-            if (NativeMethods.IsSlideShowWindow(owner)) helper.Owner = owner;
-            promptHandle = helper.EnsureHandle();
-            prompt.ShowDialog();
-            keepInk = prompt.KeepInk;
-            return true;
+            var promptHandle = helper.EnsureHandle();
+            var closed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            prompt.Closed += (_, _) => closed.TrySetResult(prompt.KeepInk);
+            prompt.Show();
+            var keepInk = await closed.Task;
+            return (!_disposed, keepInk, promptHandle);
         }
         catch (Exception ex)
         {
             Report("处理墨迹失败", ex.Message);
             _retryInkPromptAfter = DateTime.UtcNow.AddSeconds(30);
-            return false;
+            return (false, true, 0);
         }
         finally
         {
-            _inkOverlay.IsEnabled = inkEnabled;
-            _overlay.IsEnabled = overlayEnabled;
+            _retentionWindow = null;
+            if (!_disposed) { _inkOverlay.IsEnabled = inkEnabled; _overlay.IsEnabled = overlayEnabled; }
             _showingInkPrompt = false;
         }
+    }
+
+    private async Task<bool> SaveBuiltInInkAsync()
+    {
+        try
+        {
+            if (_pendingInkSave is { } pending)
+            {
+                await pending;
+                _pendingInkSave = null;
+                if (_inkRevision == _pendingSaveRevision) _inkDirty = false;
+            }
+            if (_disposed || !_inkDirty || _activeInkPage is null) return !_disposed;
+            var page = _activeInkPage;
+            var data = _inkOverlay.CapturePage() with { InkDay = _inkDay };
+            _pendingSaveRevision = _inkRevision;
+            _pendingInkSave = Task.Run(() => _inkStore.Save(page, data));
+            await _pendingInkSave;
+            _pendingInkSave = null;
+            if (_inkRevision == _pendingSaveRevision) _inkDirty = false;
+            return true;
+        }
+        catch (Exception ex) { _pendingInkSave = null; Report("保存内置笔迹失败", ex.Message); return false; }
     }
 
     private bool SaveBuiltInInk(bool force)
@@ -931,7 +977,7 @@ public sealed class MainController : IDisposable
         catch (Exception ex) { Report("保存内置笔迹失败", ex.Message); return false; }
     }
 
-    private void CheckEndedInkSessions()
+    private async void CheckEndedInkSessions()
     {
         if (_disposed || _showingInkPrompt || _exitInProgress || DateTime.UtcNow < _retryInkPromptAfter) return;
         if (_inkOverlay.IsWriting && NativeMethods.IsSlideShowWindow(_activeInkTarget)) return;
@@ -940,12 +986,15 @@ public sealed class MainController : IDisposable
             // A background editor or a transient COM failure is not a slide-show exit.
             if (NativeMethods.IsSlideShowWindow(session.Key)) continue;
             var ownsCanvas = InkPageContinuityPolicy.EndedSessionOwnsCanvas(session.Key, _activeInkTarget);
+            _showingInkPrompt = true;
             if (ownsCanvas) _inkOverlay.CancelInput("slideshow window closed");
-            if (ownsCanvas && !SaveBuiltInInk(true))
+            if (ownsCanvas && !await SaveBuiltInInkAsync())
             {
+                _showingInkPrompt = false;
                 _retryInkPromptAfter = DateTime.UtcNow.AddSeconds(30);
                 return;
             }
+            if (_disposed) { _showingInkPrompt = false; return; }
             _showingInkPrompt = true;
             _focusGeneration++;
             DiagnosticLog.Ink($"ended-session target={session.Key} active={_activeInkTarget} ownsCanvas={ownsCanvas}");
@@ -965,8 +1014,9 @@ public sealed class MainController : IDisposable
                     session.Value.Page.PresentationIdentity);
                 if (!alreadyConfirmed && !anotherSession && _inkStore.HasPresentationInk(session.Value.Page))
                 {
-                    if (!ShowRetentionPrompt(session.Value, 0, out var keepInk, out _)) return;
-                    if (!keepInk) _inkStore.DiscardPresentation(session.Value.Page);
+                    var choice = await ShowRetentionPrompt(session.Value, 0);
+                    if (!choice.Success || _disposed) return;
+                    if (!choice.Keep) _inkStore.DiscardPresentation(session.Value.Page);
                 }
                 _inkSessions.Remove(session.Key);
                 if (ownsCanvas)
@@ -1128,6 +1178,7 @@ public sealed class MainController : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _retentionWindow?.Close();
         _dayTimer.Stop();
         _displaySwitch.Dispose();
         _foregroundWatcher?.Dispose();
