@@ -1,0 +1,19 @@
+OfficeTouchBar 0.3.20 build report
+
+SDK: .NET 10.0.403 (SDK SHA-512 verified against Microsoft release metadata)
+Application target: win-x64, self-contained, Release, EnableWindowsTargeting=true
+Regression checks: 15 passed, 0 failed (production logic with platform doubles)
+Baseline comparison: 8 failures among the original 14 regression scenarios before fixes.
+Build: succeeded; existing WFO0003 DPI manifest warnings remain.
+Installer compiler: official Inno Setup 7.1.1 x64, under Wine 11.21 WoW64.
+Installer script: Setup/OfficeTouchBar.iss. Compilation succeeded (exit 0).
+Payload manifest: 473 files, generated from the current artifacts/publish directory.
+Verified: Setup and application assembly file version 0.3.20.0; SHA-256 recorded alongside Setup.
+
+Not verified: actual Windows installation/upgrade/uninstallation, WPF rendering/input on touch hardware, live PowerPoint COM interaction.
+These require Windows and the affected hardware; automated logic checks cannot guarantee absence of all regressions.
+
+Commands:
+dotnet run --project Tests/RegressionChecks.csproj -c Release
+dotnet publish OfficeTouchBar.csproj -c Release -r win-x64 --self-contained true -p:EnableWindowsTargeting=true -p:PublishSingleFile=false -o artifacts/publish
+ISCC.exe Setup/OfficeTouchBar.iss
