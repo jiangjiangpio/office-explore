@@ -30,7 +30,7 @@ public sealed class ObservedInkCanvas : InkCanvas
         {
             if ((_contactStylus is { InAir: false } other && other != e.StylusDevice)
                 || (_mouseContact && Mouse.LeftButton == MouseButtonState.Pressed)
-                || ActiveEditingMode != InkCanvasEditingMode.Ink || e.StylusDevice.Inverted) return;
+                || EditingMode != InkCanvasEditingMode.Ink || e.StylusDevice.Inverted) return;
             // A real Down is authoritative even if the previous Up was lost.
             ResetContactRecovery();
             _contactStylus = e.StylusDevice;

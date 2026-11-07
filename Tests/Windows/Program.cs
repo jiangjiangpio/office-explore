@@ -37,6 +37,7 @@ internal static class Program
                 // headless runner has no tablet service/device to convert them
                 // into legacy packets; touch is exercised by the pointer run.
                 Console.WriteLine(pointer ? "Windows pointer stack: native mouse and synthetic touch" : "Default WISP stack: native mouse");
+                Console.WriteLine($"WPF tablet devices: {Tablet.TabletDevices.Count}");
                 foreach (var touch in pointer ? new[] { false, true } : new[] { false })
                 {
                     var name = touch ? "touch" : "mouse";
@@ -47,6 +48,8 @@ internal static class Program
                     await Check($"{name}: a new contact does not join the old stroke", () => Separate(touch));
                     await Check($"{name}: clearing during contact keeps the page empty", () => ClearDuringContact(touch));
                     await Check($"{name}: another control's capture is respected", () => OtherCapture(touch));
+                    await Check($"{name}: page replacement cannot inherit the old contact", () => ReplacePage(touch));
+                    await Check($"{name}: foreground handoff cancels the old contact", () => ForegroundHandoff(touch));
                 }
             }
             catch (Exception ex) { _failed++; Console.WriteLine($"FAIL test infrastructure: {ex}"); }
@@ -177,6 +180,42 @@ internal static class Program
         Assert(_canvas.Strokes.Count == 1 && _canvas.Strokes[0].StylusPoints[^1].X < 250,
             "Recovery continued ink after deliberate capture transfer.");
     }
+
+    private static async Task ReplacePage(bool touch)
+    {
+        Prepare();
+        using var input = new NativeContact(_canvas, touch);
+        await input.Down(80, 220);
+        await input.Move(200, 220);
+        _window.LoadPage(InkPageData.Empty());
+        await input.Move(500, 220);
+        await input.Up();
+        Assert(_canvas.Strokes.Count == 0, "An old contact wrote onto the next page.");
+    }
+
+    private static async Task ForegroundHandoff(bool touch)
+    {
+        Prepare();
+        using var input = new NativeContact(_canvas, touch);
+        await input.Down(80, 220);
+        await input.Move(200, 220);
+        if (touch) _canvas.ReleaseStylusCapture(); else _canvas.ReleaseMouseCapture();
+        var other = new Window { Left = 850, Top = 40, Width = 120, Height = 120, Topmost = true };
+        try
+        {
+            other.Show();
+            other.Activate();
+            await Task.Delay(100);
+            Assert(other.IsActive, "The test foreground window did not activate.");
+            await input.Move(400, 220);
+        }
+        finally { other.Close(); }
+        _window.Activate();
+        await input.Move(600, 220);
+        await input.Up();
+        Assert(_canvas.Strokes.Count == 1 && _canvas.Strokes[0].StylusPoints[^1].X < 250,
+            "A contact cancelled by a foreground handoff resumed on return.");
+    }
 }
 
 internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisposable
@@ -205,6 +244,8 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
         await Task.Delay(60);
         if (target is InkCanvas canvas && !(touch ? canvas.IsStylusCaptured : canvas.IsMouseCaptured))
             throw new InvalidOperationException($"Native {(touch ? "touch" : "mouse")} Down did not enter WPF ink collection.");
+        if (touch && Stylus.CurrentStylusDevice is { } stylus)
+            Console.WriteLine($"Touch Down: id={stylus.Id} inAir={stylus.InAir} inverted={stylus.Inverted} position={stylus.GetPosition(target)} points={stylus.GetStylusPoints(target).Count} mode={((InkCanvas)target).ActiveEditingMode}");
     }
     internal async Task Move(double x, double y)
     {

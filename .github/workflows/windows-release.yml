@@ -51,12 +51,20 @@ jobs:
             artifacts/release-notes.md
             artifacts/verification.txt
           if-no-files-found: error
+      - name: Collect input diagnostics
+        if: failure()
+        run: |
+          $logs = Join-Path $env:APPDATA 'OfficeTouchBar'
+          if (Test-Path $logs) { Copy-Item $logs artifacts/input-diagnostics -Recurse -Force }
+          Get-ChildItem "$logs/Logs" -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-Content $_.FullName -Tail 160
+          }
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: Windows-input-diagnostics
           path: |
-            ~/AppData/Roaming/OfficeTouchBar/**/*.log
+            artifacts/input-diagnostics/**/*.log
             artifacts/*.log
             artifacts/*.txt
           if-no-files-found: ignore

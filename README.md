@@ -2,7 +2,7 @@
 
 Windows 桌面版 PowerPoint 触控翻页侧栏工具。
 
-当前源码版本：0.3.20。此版本修复临时 COM 读取失败引起的工具重置、漏掉抬起事件后的输入状态滞留，以及窗口置顶状态反复变化。Windows 触控设备和 PowerPoint 联动仍需实机验收。
+当前源码版本：0.3.21。此版本修复内置笔在捕获意外中断后停止出墨的问题，并防止清空或切换页面后旧触点继续写入。保留上一版对侧栏窗口层级、临时 COM 读取失败和漏掉抬起事件的修复。
 
 ## 构建
 
@@ -24,7 +24,14 @@ dotnet build .\OfficeTouchBar.csproj -c Release
 dotnet run --project Tests/RegressionChecks.csproj -c Release
 ```
 
-检查使用平台替身覆盖 COM 读取失败、窗口排序和触点状态；不替代 WPF、真实触控驱动和 PowerPoint 的端到端测试。详见 `Tests/README.md`。
+此外，Windows 输入检查使用真实 WPF 窗口、原生鼠标输入及 Windows 合成触控设备，验证连续书写、捕获中断恢复、实时显示和输入取消边界：
+
+```powershell
+dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release
+dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release -- --pointer
+```
+
+GitHub Actions 会运行这些检查，再构建并验证安装包。自动化测试不替代具体触屏驱动与 PowerPoint 的实机联动验收。详见 `Tests/README.md`。
 
 ## Office 连接说明
 
