@@ -22,12 +22,15 @@ internal sealed class InkContactState
     {
         if (_contacts.ContainsKey((kind, id))) _contacts[(kind, id)] = new(now, true);
     }
-    internal void Sweep(long now, Func<string, int, bool> released)
+    internal void Sweep(long now, Func<string, int, bool?> released)
     {
         foreach (var pair in _contacts.ToArray())
         {
-            if (!pair.Value.CaptureLost) continue;
-            if (released(pair.Key.Kind, pair.Key.Id) || now - pair.Value.LastSeen >= 2000)
+            var isReleased = released(pair.Key.Kind, pair.Key.Id);
+            // Up can be handled by WPF or lost outside the HWND. Reconcile all
+            // contacts, but never time out a device known to still be down.
+            if (isReleased == true || (isReleased is null && pair.Value.CaptureLost
+                && now - pair.Value.LastSeen >= 2000))
             {
                 End(pair.Key.Kind, pair.Key.Id, now);
                 DiagnosticLog.Ink($"contact-reconciled kind={pair.Key.Kind} id={pair.Key.Id} quietMs={now - pair.Value.LastSeen}");
@@ -63,10 +66,10 @@ internal sealed class InkPreparationRetry
 {
     private int _attempts;
     private long _retryAt;
-    internal bool CanAttempt(long now) => _attempts < 5 && now >= _retryAt;
+    internal bool CanAttempt(long now) => now >= _retryAt;
     internal void Failed(long now)
     {
-        _attempts++;
+        _attempts = Math.Min(5, _attempts + 1);
         _retryAt = now + Math.Min(4000, 350L << Math.Min(_attempts - 1, 4));
     }
     internal void Reset() { _attempts = 0; _retryAt = 0; }

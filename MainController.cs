@@ -56,6 +56,7 @@ public sealed class MainController : IDisposable
     private nint _activeInkTarget;
     private readonly InkPageContinuityPolicy _pageContinuity = new();
     private readonly InkPreparationRetry _preparationRetry = new();
+    private readonly ForegroundContinuityPolicy _foregroundContinuity = new();
     private readonly List<KeyboardMessage> _deferredKeys = [];
     private nint _deferredKeyTarget;
     private bool _keyBufferOverflow;
@@ -169,7 +170,7 @@ public sealed class MainController : IDisposable
         {
             Icon = System.Drawing.SystemIcons.Application,
             Visible = true,
-            Text = "OfficeTouchBar 0.3.19"
+            Text = "OfficeTouchBar 0.3.20"
         };
         _trayIcon.DoubleClick += (_, _) => ShowSettings();
         var menu = new Forms.ContextMenuStrip();
@@ -201,7 +202,7 @@ public sealed class MainController : IDisposable
         _bridge.OverlayHandle = overlayHandle;
         _bridge.InkOverlayHandle = inkHandle;
         _inkOverlay.ToolbarHandle = overlayHandle;
-        DiagnosticLog.Ink($"startup version=0.3.19.0 settings={DiagnosticBundle.SettingsSummary(_settings)}");
+        DiagnosticLog.Ink($"startup version=0.3.20.0 settings={DiagnosticBundle.SettingsSummary(_settings)}");
         StartSnapshotPoller();
         _foregroundWatcher = new NativeInputProtection.ForegroundWatcher(UpdateInputProtection);
         _protectionTimer.Start();
@@ -294,8 +295,11 @@ public sealed class MainController : IDisposable
         if (_settingsWindow is { IsVisible: true }) return;
         if (_disposed || !_running || _showingInkPrompt || _exitInProgress) return;
         if (_inkOverlay.IsVisible && _inkOverlay.IsWriting) return;
-        if (snapshot.ObservedForegroundHandle != 0
-            && snapshot.ObservedForegroundHandle != NativeMethods.GetForegroundWindow())
+        var foreground = NativeMethods.GetForegroundWindow();
+        if (_foregroundContinuity.Defer(foreground, _overlay.IsVisible,
+            NativeMethods.IsWindowVisible(_bridge.Snapshot.WindowHandle), Environment.TickCount64))
+        { _snapshotPoller?.Request(); return; }
+        if (snapshot.ObservedForegroundHandle != foreground)
         { _snapshotPoller?.Request(); return; }
         // A completed background COM read may describe a window that has
         // already closed/hidden. Never revive it with SetWindowPos(SHOWWINDOW).
@@ -715,10 +719,11 @@ public sealed class MainController : IDisposable
             if (success) _preparedBuiltInTarget = snapshot.WindowHandle;
             else
             {
+                var alreadyReported = _preparationRetry.Exhausted;
                 _preparationRetry.Failed(Environment.TickCount64);
                 DiagnosticLog.Ink($"prepare-failed target={snapshot.WindowHandle} exhausted={_preparationRetry.Exhausted} foreground={NativeMethods.GetForegroundWindow()}");
-                if (_preparationRetry.Exhausted)
-                    Report("内置笔初始化", "暂未完成初始化。请松开触控后重新点击普通笔重试。");
+                if (_preparationRetry.Exhausted && !alreadyReported)
+                    Report("内置笔初始化", "PowerPoint 暂未就绪，程序会在松开触控后自动重试。");
             }
             PromoteSlideShow(snapshot.WindowHandle);
             return;

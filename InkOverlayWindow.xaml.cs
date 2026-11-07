@@ -64,6 +64,7 @@ public partial class InkOverlayWindow : Window
         get
         {
             _contacts.Sweep(Environment.TickCount64, ContactReleased);
+            _rawContacts.ReconcileReleased(id => ContactReleased("stylus", id) == true);
             foreach (var id in _writingStyluses.Keys.ToArray())
                 if (!_contacts.Contains("stylus", id)) _writingStyluses.Remove(id);
             foreach (var id in _writingTouches.Keys.ToArray())
@@ -93,15 +94,15 @@ public partial class InkOverlayWindow : Window
         InkSurface.StrokeCollected += InkSurface_OnChanged;
         InkSurface.StrokeErased += InkSurface_OnChanged;
         InkSurface.PreviewMouseDown += Input_OnMouseDown;
-        InkSurface.PreviewMouseUp += Input_OnMouseUp;
+        InkSurface.AddHandler(PreviewMouseUpEvent, new MouseButtonEventHandler(Input_OnMouseUp), true);
         InkSurface.PreviewMouseMove += Input_OnMouseMove;
         InkSurface.MouseLeave += Input_OnMouseLeave;
         InkSurface.PreviewStylusDown += Input_OnStylusDown;
         InkSurface.PreviewStylusMove += Input_OnStylusMove;
-        InkSurface.PreviewStylusUp += Input_OnStylusUp;
+        InkSurface.AddHandler(PreviewStylusUpEvent, new StylusEventHandler(Input_OnStylusUp), true);
         InkSurface.PreviewTouchDown += Input_OnTouchDown;
         InkSurface.PreviewTouchMove += Input_OnTouchMove;
-        InkSurface.PreviewTouchUp += Input_OnTouchUp;
+        InkSurface.AddHandler(PreviewTouchUpEvent, new EventHandler<TouchEventArgs>(Input_OnTouchUp), true);
         Stylus.SetIsPressAndHoldEnabled(InkSurface, false);
         Stylus.SetIsFlicksEnabled(InkSurface, false);
         Stylus.SetIsTapFeedbackEnabled(InkSurface, false);
@@ -136,6 +137,7 @@ public partial class InkOverlayWindow : Window
         InkSurface.StylusOutOfRange += (_, e) =>
         {
             _contacts.End("stylus", e.StylusDevice.Id, Environment.TickCount64);
+            _rawContacts.ObserveUp(e.StylusDevice.Id, e.Timestamp);
             _writingStyluses.Remove(e.StylusDevice.Id);
             TraceInput($"stylus-out-of-range id={e.StylusDevice.Id}");
         };
@@ -399,16 +401,17 @@ public partial class InkOverlayWindow : Window
         _lastEraserContact = long.MinValue;
     }
 
-    private bool ContactReleased(string kind, int id)
+    private bool? ContactReleased(string kind, int id)
     {
         try
         {
+            if (kind == "mouse") return Mouse.LeftButton == MouseButtonState.Released;
             if (kind == "stylus" && _writingStyluses.TryGetValue(id, out var stylus)) return stylus.InAir;
             if (kind == "touch" && _writingTouches.TryGetValue(id, out var touch))
-                return touch.GetTouchPoint(InkSurface).Action == TouchAction.Up;
+                return !touch.IsActive || touch.GetTouchPoint(InkSurface).Action == TouchAction.Up;
         }
         catch { /* Missing device state is not evidence of a physical Up. */ }
-        return false;
+        return null;
     }
 
     internal void CancelInput(string reason)
@@ -738,6 +741,7 @@ public partial class InkOverlayWindow : Window
     }
     private void Input_OnStylusUp(object sender, StylusEventArgs e)
     {
+        _rawContacts.ObserveUp(e.StylusDevice.Id, e.Timestamp);
         if (_tool == PointerTool.Eraser && e.StylusDevice.TabletDevice.Type == TabletDeviceType.Touch) return;
         _contacts.End("stylus", e.StylusDevice.Id, Environment.TickCount64);
         _writingStyluses.Remove(e.StylusDevice.Id);

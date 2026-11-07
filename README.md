@@ -2,7 +2,7 @@
 
 Windows 桌面版 PowerPoint 触控翻页侧栏工具。
 
-当前源码版本：0.3.18。本仓库保存重构前的代码快照，仍有已反馈但尚未完成修复或实机验收的问题。
+当前源码版本：0.3.20。此版本修复临时 COM 读取失败引起的工具重置、漏掉抬起事件后的输入状态滞留，以及窗口置顶状态反复变化。Windows 触控设备和 PowerPoint 联动仍需实机验收。
 
 ## 构建
 
@@ -12,11 +12,19 @@ Windows 桌面版 PowerPoint 触控翻页侧栏工具。
 dotnet build .\OfficeTouchBar.csproj -c Release
 ```
 
-安装 Inno Setup 6，并将其安装目录加入 PATH（使 `iscc` 命令可用）后，使用构建脚本生成干净的发布目录、文件清单和安装包：
+安装 Inno Setup 6 或更新版本，并将其安装目录加入 PATH（使 `iscc` 命令可用）后，使用构建脚本生成干净的发布目录、文件清单和安装包：
 
 ```powershell
 .\build.ps1
 ```
+
+状态逻辑回归检查可在 .NET 10 支持的平台执行：
+
+```sh
+dotnet run --project Tests/RegressionChecks.csproj -c Release
+```
+
+检查使用平台替身覆盖 COM 读取失败、窗口排序和触点状态；不替代 WPF、真实触控驱动和 PowerPoint 的端到端测试。详见 `Tests/README.md`。
 
 ## Office 连接说明
 

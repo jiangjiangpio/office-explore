@@ -1,5 +1,5 @@
 #define MyAppName "OfficeTouchBar"
-#define MyAppVersion "0.3.19"
+#define MyAppVersion "0.3.20"
 #define MyAppPublisher "OfficeTouchBar"
 #define MyAppExeName "OfficeTouchBar.exe"
 
@@ -27,7 +27,7 @@ CloseApplications=yes
 CloseApplicationsFilter=OfficeTouchBar.exe,OfficeTouchBar.dll
 RestartApplications=no
 SetupMutex=OfficeTouchBar.Setup
-VersionInfoVersion=0.3.18.0
+VersionInfoVersion={#MyAppVersion}.0
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加快捷方式："; Flags: unchecked

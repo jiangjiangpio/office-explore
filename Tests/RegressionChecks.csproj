@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../PowerPointBridge.cs" Link="PowerPointBridge.cs" />
+    <Compile Include="../Models/PowerPointSnapshot.cs" Link="PowerPointSnapshot.cs" />
+    <Compile Include="../Infrastructure/PresentationToolPolicy.cs" Link="PresentationToolPolicy.cs" />
+    <Compile Include="../Infrastructure/InkStabilityPolicy.cs" Link="InkStabilityPolicy.cs" />
+    <Compile Include="../Infrastructure/ForegroundContinuityPolicy.cs" Link="ForegroundContinuityPolicy.cs" />
+    <Compile Include="../Infrastructure/WindowLayerPolicy.cs" Link="WindowLayerPolicy.cs" />
+    <Compile Include="../Infrastructure/InkContactObserver.cs" Link="InkContactObserver.cs" />
+  </ItemGroup>
+</Project>

@@ -9,7 +9,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <AssemblyName>OfficeTouchBar</AssemblyName>
-    <Version>0.3.19</Version>
+    <Version>0.3.20</Version>
     <RootNamespace>OfficeTouchBar</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>

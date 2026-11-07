@@ -1,5 +1,5 @@
 # This repository contains only application source and build inputs.
-# Keep tests, local documents, tools, caches and generated files on this machine.
+# Keep local documents, tools, caches and generated files on this machine.
 /*
 !/.gitignore
 !/LICENSE
@@ -29,6 +29,11 @@
 /Setup/*
 !/Setup/OfficeTouchBar.iss
 !/Setup/LegacyPayloadFiles.txt
+!/Tests/
+/Tests/*
+!/Tests/*.cs
+!/Tests/*.csproj
+!/Tests/README.md
 !/new/
 /new/*
 !/new/CMakeLists.txt

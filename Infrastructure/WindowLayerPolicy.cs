@@ -43,7 +43,9 @@ internal sealed class WindowLayerPolicy
         var blockedByEditor = overlappingEditors.Any(editor => !NativeMethods.IsAbove(slideShow, editor));
         var batch = NativeMethods.BeginDeferWindowPos(3);
         if (batch == 0) return false;
-        var needsPromotion = blockedByEditor && !IsTopmost(slideShow);
+        // A normal editor only requires HWND_TOP. Promoting the show for that
+        // case and demoting it on the next poll causes repeated Z-order churn.
+        var needsPromotion = blockedByEditor && overlappingEditors.Any(IsTopmost) && !IsTopmost(slideShow);
         var identity = needsPromotion ? NativeMethods.ProcessIdentity(slideShow) : string.Empty;
         if (blockedByEditor)
             batch = NativeMethods.DeferWindowPos(batch, slideShow,

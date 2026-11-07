@@ -106,8 +106,11 @@ public sealed class PowerPointBridge : ISnapshotReader
                 if (target is not null)
                 {
                     dynamic presentation = scope.Track(target.Presentation);
-                    var presentationName = ReadString(() => presentation.Name);
-                    var presentationIdentity = ReadString(() => presentation.FullName);
+                    // These identify the ink store and the selected tool. A rejected
+                    // COM read is not an unnamed/new presentation: use the failure
+                    // path below instead of publishing a different identity.
+                    var presentationName = Convert.ToString(presentation.Name) ?? "";
+                    var presentationIdentity = Convert.ToString(presentation.FullName) ?? "";
                     // PowerPoint 2024 may throw while exposing SlideShowWindow.HWND.
                     // The native foreground/previous handle is already the authoritative
                     // window identity and keeps page reads independent of that COM quirk.
@@ -137,7 +140,7 @@ public sealed class PowerPointBridge : ISnapshotReader
                         dynamic slide = scope.Track(view.Slide);
                         current = Convert.ToInt32(slide.SlideIndex);
                     }
-                    catch { /* Grid and transition views do not always expose a current slide. */ }
+                    catch when (!isShow) { /* An editor grid may have no selected slide. */ }
                     if (string.IsNullOrWhiteSpace(presentationIdentity))
                         presentationIdentity = $"unsaved:{presentationName}:{hwnd}";
                     var targetForeground = isOverlay || (isOffice && (foreground == hwnd

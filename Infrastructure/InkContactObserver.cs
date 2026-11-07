@@ -13,12 +13,15 @@ public sealed class ObservedInkCanvas : InkCanvas
 // the Dispatcher. This observer never touches WPF visuals or changes packets.
 internal sealed class InkContactObserver : StylusPlugIn
 {
-    private sealed record Contact(long LastSeen, bool Left, long Sequence);
+    private sealed record Contact(long LastSeen, bool Left, long Sequence, int Timestamp);
     private sealed record Verification(int Id, long Sequence);
     private readonly ConcurrentDictionary<int, Contact> _contacts = new();
+    private readonly Func<long> _clock;
     private int _acceptInput;
     private long _lastMoveLog;
     private long _sequence;
+    internal InkContactObserver(Func<long>? clock = null) =>
+        _clock = clock ?? (() => Environment.TickCount64);
     internal void SetInputEnabled(bool value)
     {
         Volatile.Write(ref _acceptInput, value ? 1 : 0);
@@ -28,7 +31,18 @@ internal sealed class InkContactObserver : StylusPlugIn
     internal void SuspectCaptureLoss()
     {
         foreach (var pair in _contacts)
-            _contacts.TryUpdate(pair.Key, pair.Value with { Left = true, LastSeen = Environment.TickCount64 }, pair.Value);
+            _contacts.TryUpdate(pair.Key, pair.Value with { Left = true, LastSeen = _clock() }, pair.Value);
+    }
+    internal void ReconcileReleased(Func<int, bool> released)
+    {
+        var now = _clock();
+        foreach (var pair in _contacts)
+        {
+            // Allow routed device state to catch up with the input thread.
+            // Conditional removal preserves any newer Down/Move for this ID.
+            if (now - pair.Value.LastSeen >= 50 && released(pair.Key))
+                ((ICollection<KeyValuePair<int, Contact>>)_contacts).Remove(pair);
+        }
     }
     internal bool HasContacts
     {
@@ -36,7 +50,7 @@ internal sealed class InkContactObserver : StylusPlugIn
         {
             if (Volatile.Read(ref _acceptInput) == 0) return false;
             foreach (var pair in _contacts)
-                if (pair.Value.Left && Environment.TickCount64 - pair.Value.LastSeen >= 2000)
+                if (pair.Value.Left && _clock() - pair.Value.LastSeen >= 2000)
                     ((ICollection<KeyValuePair<int, Contact>>)_contacts).Remove(pair);
             return !_contacts.IsEmpty;
         }
@@ -46,14 +60,18 @@ internal sealed class InkContactObserver : StylusPlugIn
     {
         if (Volatile.Read(ref _acceptInput) == 0) return 0;
         var sequence = Interlocked.Increment(ref _sequence);
-        _contacts[id] = new(Environment.TickCount64, false, sequence);
+        _contacts[id] = new(_clock(), false, sequence, timestamp);
         if (Volatile.Read(ref _acceptInput) == 0) _contacts.TryRemove(id, out _);
         DiagnosticLog.Ink($"raw-down id={id} inputTimestamp={timestamp}");
         return sequence;
     }
     internal void ObserveUp(int id, int timestamp)
     {
-        if (_contacts.TryRemove(id, out _)) DiagnosticLog.Ink($"raw-up id={id} inputTimestamp={timestamp}");
+        // A routed Up may arrive after the input thread has started the next
+        // stroke with the same device ID. Never erase that newer contact.
+        if (_contacts.TryGetValue(id, out var contact) && unchecked(timestamp - contact.Timestamp) >= 0
+            && ((ICollection<KeyValuePair<int, Contact>>)_contacts).Remove(new(id, contact)))
+            DiagnosticLog.Ink($"raw-up id={id} inputTimestamp={timestamp}");
     }
     protected override void OnStylusDown(RawStylusInput input)
     {
@@ -77,7 +95,7 @@ internal sealed class InkContactObserver : StylusPlugIn
     {
         try
         {
-            var now = Environment.TickCount64;
+            var now = _clock();
             if (_contacts.TryGetValue(input.StylusDeviceId, out var contact))
             {
                 _contacts.TryUpdate(input.StylusDeviceId, contact with { LastSeen = now, Left = false }, contact);
@@ -101,7 +119,7 @@ internal sealed class InkContactObserver : StylusPlugIn
         {
             if (confirmed && _contacts.TryGetValue(input.StylusDeviceId, out var contact))
             {
-                _contacts.TryUpdate(input.StylusDeviceId, contact with { Left = true, LastSeen = Environment.TickCount64 }, contact);
+                _contacts.TryUpdate(input.StylusDeviceId, contact with { Left = true, LastSeen = _clock() }, contact);
                 DiagnosticLog.Ink($"raw-leave id={input.StylusDeviceId} inputTimestamp={input.Timestamp}");
             }
         }
