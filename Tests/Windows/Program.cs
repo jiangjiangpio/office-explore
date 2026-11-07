@@ -16,8 +16,12 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Contains("--pointer"))
+        var pointer = args.Contains("--pointer");
+        if (pointer)
+        {
             AppContext.SetSwitch("Switch.System.Windows.Input.Stylus.EnablePointerSupport", true);
+            NativeContact.InitializeTouch();
+        }
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Startup += async (_, _) =>
         {
@@ -29,7 +33,11 @@ internal static class Program
                 _canvas = (InkCanvas)_window.FindName("InkSurface");
                 _canvas.Focus();
                 await Task.Delay(300);
-                foreach (var touch in new[] { false, true })
+                // Synthetic pointer devices emit WM_POINTER. WISP on this
+                // headless runner has no tablet service/device to convert them
+                // into legacy packets; touch is exercised by the pointer run.
+                Console.WriteLine(pointer ? "Windows pointer stack: native mouse and synthetic touch" : "Default WISP stack: native mouse");
+                foreach (var touch in pointer ? new[] { false, true } : new[] { false })
                 {
                     var name = touch ? "touch" : "mouse";
                     await Check($"{name}: uninterrupted long stroke", () => Stroke(touch, false, false));
@@ -177,18 +185,26 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
     private NativePoint _position;
     private static nint _touchDevice;
 
+    internal static void InitializeTouch()
+    {
+        if (_touchDevice != 0) return;
+        _touchDevice = CreateSyntheticPointerDevice(2, 1, 3);
+        if (_touchDevice == 0) throw new System.ComponentModel.Win32Exception();
+    }
+
     internal async Task Down(double x, double y)
     {
         Position(x, y);
         if (touch && _touchDevice == 0)
         {
             Console.WriteLine($"Touch injection: pointerSize={Marshal.SizeOf<PointerInfo>()} touchSize={Marshal.SizeOf<TouchInfo>()} screen={GetSystemMetrics(0)}x{GetSystemMetrics(1)} firstPoint={_position.X},{_position.Y}");
-            _touchDevice = CreateSyntheticPointerDevice(2, 1, 3);
-            if (_touchDevice == 0) throw new System.ComponentModel.Win32Exception();
+            InitializeTouch();
         }
         Send(0x10000 | 0x2 | 0x4, 0x2);
         _down = true;
         await Task.Delay(60);
+        if (target is InkCanvas canvas && !(touch ? canvas.IsStylusCaptured : canvas.IsMouseCaptured))
+            throw new InvalidOperationException($"Native {(touch ? "touch" : "mouse")} Down did not enter WPF ink collection.");
     }
     internal async Task Move(double x, double y)
     {

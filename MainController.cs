@@ -170,7 +170,7 @@ public sealed class MainController : IDisposable
         {
             Icon = System.Drawing.SystemIcons.Application,
             Visible = true,
-            Text = "OfficeTouchBar 0.3.20"
+            Text = "OfficeTouchBar 0.3.21"
         };
         _trayIcon.DoubleClick += (_, _) => ShowSettings();
         var menu = new Forms.ContextMenuStrip();
@@ -202,7 +202,7 @@ public sealed class MainController : IDisposable
         _bridge.OverlayHandle = overlayHandle;
         _bridge.InkOverlayHandle = inkHandle;
         _inkOverlay.ToolbarHandle = overlayHandle;
-        DiagnosticLog.Ink($"startup version=0.3.20.0 settings={DiagnosticBundle.SettingsSummary(_settings)}");
+        DiagnosticLog.Ink($"startup version=0.3.21.0 settings={DiagnosticBundle.SettingsSummary(_settings)}");
         StartSnapshotPoller();
         _foregroundWatcher = new NativeInputProtection.ForegroundWatcher(UpdateInputProtection);
         _protectionTimer.Start();

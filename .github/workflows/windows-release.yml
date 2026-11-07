@@ -15,24 +15,68 @@ jobs:
         with:
           dotnet-version: '10.0.403'
       - name: State regression checks
-        run: dotnet run --project Tests/RegressionChecks.csproj -c Release
-      - name: Native Windows input checks
-        run: dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release
+        run: |
+          New-Item artifacts -ItemType Directory -Force | Out-Null
+          dotnet run --project Tests/RegressionChecks.csproj -c Release | Tee-Object artifacts/state-checks.txt
+          if ($LASTEXITCODE -ne 0) { throw 'State regression checks failed.' }
+      - name: Default WPF mouse input checks
+        run: |
+          dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release | Tee-Object artifacts/input-wisp.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Windows input checks failed.' }
       - name: Windows pointer input checks
-        run: dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release -- --pointer
+        run: |
+          dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release -- --pointer | Tee-Object artifacts/input-pointer.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Windows pointer checks failed.' }
       - name: Build Setup
         shell: pwsh
         run: |
           $env:PATH += ';C:\Program Files (x86)\Inno Setup 6'
           ./build.ps1
+      - name: Install, upgrade, start and uninstall Setup
+        run: ./Tests/Windows/SetupSmoke.ps1 | Tee-Object artifacts/setup-checks.txt
+      - name: Checksum and release notes
+        run: |
+          $hash = (Get-FileHash artifacts/OfficeTouchBar-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash *OfficeTouchBar-Setup.exe" | Set-Content artifacts/OfficeTouchBar-Setup.exe.sha256 -Encoding ascii
+          Copy-Item Setup/ReleaseNotes-0.3.21.md artifacts/release-notes.md
+          @('state-checks', 'input-wisp', 'input-pointer', 'setup-checks') | ForEach-Object {
+            Get-Content "artifacts/$_.txt" | Add-Content artifacts/verification.txt
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: OfficeTouchBar-Setup
-          path: artifacts/OfficeTouchBar-Setup.exe
+          path: |
+            artifacts/OfficeTouchBar-Setup.exe
+            artifacts/OfficeTouchBar-Setup.exe.sha256
+            artifacts/release-notes.md
+            artifacts/verification.txt
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: Windows-input-diagnostics
-          path: ~/AppData/Roaming/OfficeTouchBar/**/*.log
+          path: |
+            ~/AppData/Roaming/OfficeTouchBar/**/*.log
+            artifacts/*.log
+            artifacts/*.txt
           if-no-files-found: ignore
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: OfficeTouchBar-Setup
+          path: release
+      - name: Publish verified Setup to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --title "OfficeTouchBar $RELEASE_TAG" \
+            --notes-file release/release-notes.md \
+            release/OfficeTouchBar-Setup.exe release/OfficeTouchBar-Setup.exe.sha256 release/verification.txt

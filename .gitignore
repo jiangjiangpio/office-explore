@@ -29,6 +29,7 @@
 /Setup/*
 !/Setup/OfficeTouchBar.iss
 !/Setup/LegacyPayloadFiles.txt
+!/Setup/ReleaseNotes-0.3.21.md
 !/Tests/
 /Tests/*
 !/Tests/*.cs
@@ -38,6 +39,7 @@
 /Tests/Windows/*
 !/Tests/Windows/*.cs
 !/Tests/Windows/*.csproj
+!/Tests/Windows/*.ps1
 !/.github/
 /.github/*
 !/.github/workflows/
