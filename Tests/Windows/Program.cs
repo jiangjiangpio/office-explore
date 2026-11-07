@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using OfficeTouchBar;
+using OfficeTouchBar.Infrastructure;
 using OfficeTouchBar.Models;
 
 internal static class Program
@@ -22,7 +23,7 @@ internal static class Program
         {
             try
             {
-                _window = new InkOverlayWindow { Left = 40, Top = 40, Width = 800, Height = 500 };
+                _window = new InkOverlayWindow { Left = 40, Top = 40, Width = 800, Height = 500, Background = Brushes.White };
                 _window.Show();
                 _window.Activate();
                 _canvas = (InkCanvas)_window.FindName("InkSurface");
@@ -36,12 +37,15 @@ internal static class Program
                     await Check($"{name}: highlighter survives capture loss", () => Stroke(touch, true, true));
                     await Check($"{name}: explicit cancellation does not resume", () => Cancel(touch));
                     await Check($"{name}: a new contact does not join the old stroke", () => Separate(touch));
+                    await Check($"{name}: clearing during contact keeps the page empty", () => ClearDuringContact(touch));
+                    await Check($"{name}: another control's capture is respected", () => OtherCapture(touch));
                 }
             }
             catch (Exception ex) { _failed++; Console.WriteLine($"FAIL test infrastructure: {ex}"); }
             finally
             {
                 _window?.Close();
+                await DiagnosticLog.FlushAsync();
                 Console.WriteLine($"{_passed} Windows input checks passed; {_failed} failed.");
                 app.Shutdown(_failed == 0 ? 0 : 1);
             }
@@ -89,9 +93,11 @@ internal static class Program
                     // No second Down is injected. The contact stays physically pressed.
                     await Task.Delay(60);
                 }
-                if (x == 320) await Task.Delay(300); // A stationary contact must stay alive.
+                if (x == 320) await Task.Delay(2200); // Exceed the stale-contact timeout without lifting.
                 await input.Move(x, 140);
             }
+            await Task.Delay(100);
+            Assert(NativeContact.HasRedInk(_canvas, 570, 140), "The live stroke was invisible before Up.");
             await input.Up();
             Assert(_canvas.Strokes.Count == 1, $"Expected one physical stroke, got {_canvas.Strokes.Count}.");
             var stroke = _canvas.Strokes[0];
@@ -132,22 +138,53 @@ internal static class Program
         Assert(_canvas.Strokes.Count == 2, $"Two physical contacts became {_canvas.Strokes.Count} strokes.");
         Assert(_canvas.Strokes[1].StylusPoints[0].X > 400, "New contact joined the previous stroke.");
     }
+
+    private static async Task ClearDuringContact(bool touch)
+    {
+        Prepare();
+        using var input = new NativeContact(_canvas, touch);
+        await input.Down(80, 220);
+        await input.Move(200, 220);
+        if (touch) _canvas.ReleaseStylusCapture(); else _canvas.ReleaseMouseCapture();
+        _window.ClearPage();
+        await input.Move(500, 220);
+        await input.Up();
+        Assert(_canvas.Strokes.Count == 0, "A cancelled stroke reappeared after page clear.");
+    }
+
+    private static async Task OtherCapture(bool touch)
+    {
+        Prepare();
+        using var input = new NativeContact(_canvas, touch);
+        await input.Down(80, 220);
+        await input.Move(200, 220);
+        var device = Stylus.CurrentStylusDevice;
+        if (touch) Assert(device!.Capture(_window), "Cannot transfer test stylus capture.");
+        else Assert(Mouse.Capture(_window), "Cannot transfer test mouse capture.");
+        await input.Move(500, 220);
+        Assert(touch ? device!.Captured == _window : Mouse.Captured == _window,
+            "Recovery stole capture from another control.");
+        await input.Up();
+        if (touch) device!.Capture(null); else Mouse.Capture(null);
+        Assert(_canvas.Strokes.Count == 1 && _canvas.Strokes[0].StylusPoints[^1].X < 250,
+            "Recovery continued ink after deliberate capture transfer.");
+    }
 }
 
 internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisposable
 {
     private bool _down;
     private NativePoint _position;
-    private static bool _touchInitialized;
+    private static nint _touchDevice;
 
     internal async Task Down(double x, double y)
     {
         Position(x, y);
-        if (touch && !_touchInitialized)
+        if (touch && _touchDevice == 0)
         {
             Console.WriteLine($"Touch injection: pointerSize={Marshal.SizeOf<PointerInfo>()} touchSize={Marshal.SizeOf<TouchInfo>()} screen={GetSystemMetrics(0)}x{GetSystemMetrics(1)} firstPoint={_position.X},{_position.Y}");
-            if (!InitializeTouchInjection(1, 3)) throw new System.ComponentModel.Win32Exception();
-            _touchInitialized = true;
+            _touchDevice = CreateSyntheticPointerDevice(2, 1, 3);
+            if (_touchDevice == 0) throw new System.ComponentModel.Win32Exception();
         }
         Send(0x10000 | 0x2 | 0x4, 0x2);
         _down = true;
@@ -179,13 +216,14 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
         {
             var info = new TouchInfo
             {
-                Pointer = new() { Type = 2, Id = 0, Flags = touchFlags, Pixel = _position, PixelRaw = _position },
+                Pointer = new() { Type = 2, Id = 1, Flags = touchFlags, Pixel = _position },
                 Mask = 7, Orientation = 90, Pressure = 512,
                 Contact = new() { Left = _position.X - 2, Right = _position.X + 2,
                     Top = _position.Y - 2, Bottom = _position.Y + 2 }
             };
-            if (!InjectTouchInput(1, [info])) throw new System.ComponentModel.Win32Exception(
-                Marshal.GetLastWin32Error(), $"InjectTouchInput flags=0x{touchFlags:X} point={_position.X},{_position.Y}");
+            if (!InjectSyntheticPointerInput(_touchDevice, [new() { Type = 2, Touch = info }], 1))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),
+                    $"InjectSyntheticPointerInput flags=0x{touchFlags:X} point={_position.X},{_position.Y}");
         }
         else
         {
@@ -199,6 +237,25 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
         if (!_down) return;
         Send(0x40000, 0x4);
         _down = false;
+    }
+    internal static bool HasRedInk(FrameworkElement target, double x, double y)
+    {
+        var point = target.PointToScreen(new Point(x, y));
+        var dc = GetDC(0);
+        if (dc == 0) throw new System.ComponentModel.Win32Exception();
+        try
+        {
+            for (var dy = -3; dy <= 3; dy++)
+            {
+                var color = GetPixel(dc, (int)point.X, (int)point.Y + dy);
+                var red = color & 255;
+                var green = (color >> 8) & 255;
+                var blue = (color >> 16) & 255;
+                if (color != uint.MaxValue && red > green + 40 && red > blue + 40) return true;
+            }
+            return false;
+        }
+        finally { ReleaseDC(0, dc); }
     }
     [StructLayout(LayoutKind.Sequential)] private struct NativePoint { internal int X, Y; }
     [StructLayout(LayoutKind.Sequential)] private struct NativeRect { internal int Left, Top, Right, Bottom; }
@@ -220,6 +277,11 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
         internal NativeRect Contact, ContactRaw;
         internal uint Orientation, Pressure;
     }
+    [StructLayout(LayoutKind.Explicit, Size = 152)] private struct PointerTypeInfo
+    {
+        [FieldOffset(0)] internal uint Type;
+        [FieldOffset(8)] internal TouchInfo Touch;
+    }
     [StructLayout(LayoutKind.Explicit, Size = 40)] private struct MouseInput
     {
         [FieldOffset(0)] internal uint Type;
@@ -232,7 +294,10 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
     }
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] private static extern nint GetDC(nint window);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(nint window, nint dc);
+    [DllImport("gdi32.dll")] private static extern uint GetPixel(nint dc, int x, int y);
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, MouseInput[] inputs, int size);
-    [DllImport("user32.dll", SetLastError = true)] private static extern bool InitializeTouchInjection(uint count, uint mode);
-    [DllImport("user32.dll", SetLastError = true)] private static extern bool InjectTouchInput(uint count, TouchInfo[] inputs);
+    [DllImport("user32.dll", SetLastError = true)] private static extern nint CreateSyntheticPointerDevice(uint type, uint count, uint mode);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool InjectSyntheticPointerInput(nint device, PointerTypeInfo[] inputs, uint count);
 }

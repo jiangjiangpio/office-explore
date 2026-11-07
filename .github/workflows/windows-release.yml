@@ -34,5 +34,5 @@ jobs:
         if: failure()
         with:
           name: Windows-input-diagnostics
-          path: ~/AppData/Roaming/OfficeTouchBar/*.log
+          path: ~/AppData/Roaming/OfficeTouchBar/**/*.log
           if-no-files-found: ignore

@@ -28,14 +28,17 @@ public sealed class ObservedInkCanvas : InkCanvas
     {
         PreviewStylusDown += (_, e) =>
         {
-            if (HasPressedContact() || ActiveEditingMode != InkCanvasEditingMode.Ink || e.StylusDevice.Inverted) return;
+            if ((_contactStylus is { InAir: false } other && other != e.StylusDevice)
+                || (_mouseContact && Mouse.LeftButton == MouseButtonState.Pressed)
+                || ActiveEditingMode != InkCanvasEditingMode.Ink || e.StylusDevice.Inverted) return;
+            // A real Down is authoritative even if the previous Up was lost.
             ResetContactRecovery();
             _contactStylus = e.StylusDevice;
         };
         PreviewMouseDown += (_, e) =>
         {
             if (e.StylusDevice is not null || e.ChangedButton != MouseButton.Left
-                || HasPressedContact() || ActiveEditingMode != InkCanvasEditingMode.Ink) return;
+                || _contactStylus is { InAir: false } || ActiveEditingMode != InkCanvasEditingMode.Ink) return;
             ResetContactRecovery();
             _mouseContact = true;
         };
@@ -137,6 +140,8 @@ public sealed class ObservedInkCanvas : InkCanvas
         var owner = stylus is not null ? stylus.Captured : Mouse.Captured;
         if (owner is not null && owner != this)
         { StopContactRecovery(); return; } // Another control deliberately took capture.
+        if (stylus is not null && Mouse.Captured is { } mouseOwner && mouseOwner != this)
+        { StopContactRecovery(); return; }
         if (MayResumeContact?.Invoke() != true) return;
         // WPF's CaptureStylus uses the current device. Never substitute another
         // finger (or a hovering pen) for the one that began this stroke.

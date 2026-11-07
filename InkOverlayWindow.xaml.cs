@@ -287,7 +287,7 @@ public partial class InkOverlayWindow : Window
             TraceInput($"place targetChanged={targetChanged} show={show} becameVisible={becameVisible}");
             // A reused HWND or a hidden/re-shown overlay must not inherit a stale
             // hit-test style, capture state, or cached drawing configuration.
-            ResetContacts();
+            CancelInput("overlay target changed or shown");
             _configuredTool = null;
             _configuredColor = null;
             _configuredPenSize = 0;
@@ -322,7 +322,7 @@ public partial class InkOverlayWindow : Window
     public void LoadPage(InkPageData page)
     {
         TraceInput($"load-page fromStrokes={InkSurface.Strokes.Count} toStrokes={page.Strokes.Count}");
-        ResetContacts();
+        CancelInput("page changed");
         _loading = true;
         _inputLogged = false;
         _changeLogged = false;
@@ -353,7 +353,7 @@ public partial class InkOverlayWindow : Window
 
     public void ClearPage()
     {
-        ResetContacts();
+        CancelInput("page cleared");
         InkSurface.Strokes.Clear();
         InvalidateEraserIndex();
         InkChanged?.Invoke();
