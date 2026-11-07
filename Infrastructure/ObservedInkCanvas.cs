@@ -132,7 +132,7 @@ public sealed class ObservedInkCanvas : InkCanvas
 
     private void TryResumeContact()
     {
-        if (!_awaitingRecovery || _restarting) return;
+        if (!_awaitingRecovery || _restarting || _recoveryOperation is not null) return;
         if (!HasPressedContact()) { StopContactRecovery(); return; }
         if (!IsVisible || !IsEnabled || !IsHitTestVisible || ActiveEditingMode != InkCanvasEditingMode.Ink)
         { StopContactRecovery(); return; }

@@ -15,6 +15,7 @@ jobs:
         with:
           dotnet-version: '10.0.403'
       - name: State regression checks
+        id: state
         run: |
           New-Item artifacts -ItemType Directory -Force | Out-Null
           dotnet run --project Tests/RegressionChecks.csproj -c Release | Tee-Object artifacts/state-checks.txt
@@ -24,6 +25,7 @@ jobs:
           dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release | Tee-Object artifacts/input-wisp.txt
           if ($LASTEXITCODE -ne 0) { throw 'Windows input checks failed.' }
       - name: Windows pointer input checks
+        if: ${{ !cancelled() && steps.state.outcome == 'success' }}
         run: |
           dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release -- --pointer | Tee-Object artifacts/input-pointer.txt
           if ($LASTEXITCODE -ne 0) { throw 'Windows pointer checks failed.' }

@@ -191,6 +191,12 @@ public partial class InkOverlayWindow : Window
     {
         if (message is 0x0006 or 0x001F or 0x0215 or 0x024C)
             TraceInput($"window-message msg=0x{message:X} wParam={wParam} lParam={lParam}");
+        // During WM_ACTIVATE/Deactivated, GetForegroundWindow can still return
+        // this HWND. WM_ACTIVATE supplies the incoming window directly; do not
+        // allow that race to keep a physical contact alive in another window.
+        if (message == 0x0006 && ((long)wParam & 0xFFFF) == 0 && lParam != 0
+            && lParam != _targetHandle && lParam != ToolbarHandle && lParam != hwnd)
+            CancelInput("activation moved outside writing session");
         if (message != 0x84) return 0;
         handled = true;
         return _tool == PointerTool.Mouse ? -1 : 1;
