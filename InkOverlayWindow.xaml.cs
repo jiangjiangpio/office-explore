@@ -91,6 +91,13 @@ public partial class InkOverlayWindow : Window
         InitializeComponent();
         _toolTimer.Tick += (_, _) => ApplyPendingTool();
         InkSurface.AddObserver(_rawContacts);
+        InkSurface.MayResumeContact = () =>
+        {
+            if (_loading || !IsVisible || !_pageInputAvailable || _tool is not (PointerTool.Pen or PointerTool.Highlighter))
+                return false;
+            var foreground = NativeMethods.GetForegroundWindow();
+            return foreground != 0 && (foreground == Handle || foreground == _targetHandle || foreground == ToolbarHandle);
+        };
         InkSurface.StrokeCollected += InkSurface_OnChanged;
         InkSurface.StrokeErased += InkSurface_OnChanged;
         InkSurface.PreviewMouseDown += Input_OnMouseDown;
@@ -392,6 +399,7 @@ public partial class InkOverlayWindow : Window
 
     private void ResetContacts(string reason = "explicit input reset")
     {
+        InkSurface.ResetContactRecovery();
         if (_contacts.HasContacts) TraceInput($"contacts-reset reason={reason}");
         EndEraser();
         _contacts.Clear();
@@ -419,6 +427,7 @@ public partial class InkOverlayWindow : Window
         // WPF commits the existing partial stroke on capture release. Do this
         // before explicit settings/exit/navigation saves, rather than losing it.
         TraceInput($"cancel-input reason={reason}");
+        InkSurface.StopContactRecovery();
         InkSurface.ReleaseStylusCapture();
         InkSurface.ReleaseMouseCapture();
         InkSurface.ReleaseAllTouchCaptures();

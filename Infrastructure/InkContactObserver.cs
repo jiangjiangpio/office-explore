@@ -1,13 +1,7 @@
 using System.Collections.Concurrent;
-using System.Windows.Controls;
 using System.Windows.Input.StylusPlugIns;
 
 namespace OfficeTouchBar.Infrastructure;
-
-public sealed class ObservedInkCanvas : InkCanvas
-{
-    internal void AddObserver(InkContactObserver observer) => StylusPlugIns.Insert(0, observer);
-}
 
 // The pen-input thread can start rendering before PreviewStylusDown reaches
 // the Dispatcher. This observer never touches WPF visuals or changes packets.

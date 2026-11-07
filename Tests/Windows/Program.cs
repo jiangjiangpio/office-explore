@@ -145,6 +145,7 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
         Position(x, y);
         if (touch && !_touchInitialized)
         {
+            Console.WriteLine($"Touch injection: pointerSize={Marshal.SizeOf<PointerInfo>()} touchSize={Marshal.SizeOf<TouchInfo>()} screen={GetSystemMetrics(0)}x{GetSystemMetrics(1)} firstPoint={_position.X},{_position.Y}");
             if (!InitializeTouchInjection(1, 3)) throw new System.ComponentModel.Win32Exception();
             _touchInitialized = true;
         }
@@ -178,12 +179,13 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
         {
             var info = new TouchInfo
             {
-                Pointer = new() { Type = 2, Id = 1, Flags = touchFlags, Pixel = _position },
+                Pointer = new() { Type = 2, Id = 0, Flags = touchFlags, Pixel = _position, PixelRaw = _position },
                 Mask = 7, Orientation = 90, Pressure = 512,
                 Contact = new() { Left = _position.X - 2, Right = _position.X + 2,
                     Top = _position.Y - 2, Bottom = _position.Y + 2 }
             };
-            if (!InjectTouchInput(1, [info])) throw new System.ComponentModel.Win32Exception();
+            if (!InjectTouchInput(1, [info])) throw new System.ComponentModel.Win32Exception(
+                Marshal.GetLastWin32Error(), $"InjectTouchInput flags=0x{touchFlags:X} point={_position.X},{_position.Y}");
         }
         else
         {
@@ -229,6 +231,7 @@ internal sealed class NativeContact(FrameworkElement target, bool touch) : IDisp
         [FieldOffset(32)] internal nuint Extra;
     }
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, MouseInput[] inputs, int size);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool InitializeTouchInjection(uint count, uint mode);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool InjectTouchInput(uint count, TouchInfo[] inputs);
