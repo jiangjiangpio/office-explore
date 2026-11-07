@@ -7,6 +7,7 @@
     <NoWarn>CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Windows/**/*.cs" />
     <Compile Include="../PowerPointBridge.cs" Link="PowerPointBridge.cs" />
     <Compile Include="../Models/PowerPointSnapshot.cs" Link="PowerPointSnapshot.cs" />
     <Compile Include="../Infrastructure/PresentationToolPolicy.cs" Link="PresentationToolPolicy.cs" />

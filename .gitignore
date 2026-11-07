@@ -34,6 +34,15 @@
 !/Tests/*.cs
 !/Tests/*.csproj
 !/Tests/README.md
+!/Tests/Windows/
+/Tests/Windows/*
+!/Tests/Windows/*.cs
+!/Tests/Windows/*.csproj
+!/.github/
+/.github/*
+!/.github/workflows/
+/.github/workflows/*
+!/.github/workflows/*.yml
 !/new/
 /new/*
 !/new/CMakeLists.txt

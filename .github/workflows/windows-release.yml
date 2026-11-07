@@ -1,0 +1,38 @@
+name: Windows input checks and Setup
+on:
+  push:
+    branches: [fix/0.3.21-ink-continuity]
+    tags: ['v0.3.21']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.403'
+      - name: State regression checks
+        run: dotnet run --project Tests/RegressionChecks.csproj -c Release
+      - name: Native Windows input checks
+        run: dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release
+      - name: Windows pointer input checks
+        run: dotnet run --project Tests/Windows/WindowsInputChecks.csproj -c Release -- --pointer
+      - name: Build Setup
+        shell: pwsh
+        run: |
+          $env:PATH += ';C:\Program Files (x86)\Inno Setup 6'
+          ./build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OfficeTouchBar-Setup
+          path: artifacts/OfficeTouchBar-Setup.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: Windows-input-diagnostics
+          path: ~/AppData/Roaming/OfficeTouchBar/*.log
+          if-no-files-found: ignore
